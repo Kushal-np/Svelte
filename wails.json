@@ -1,0 +1,21 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "dashboard-app",
+  "outputfilename": "dashboard-app",
+  "author": {
+    "name": "Kushal-np",
+    "email": "wrckushal@gmail.com"
+  },
+  "frontend:install": "",
+  "frontend:build": "",
+  "frontend:dev:watcher": "",
+  "frontend:dev:serverUrl": "http://localhost:5173",
+  "assetdir": "./frontend/build",
+  "windowStartState": "normal",
+  "minWidth": 1024,
+  "minHeight": 768,
+  "defaultWidth": 1200,
+  "defaultHeight": 800,
+  "resizable": true,
+  "backgroundColor": "#1a1a1a"
+}
