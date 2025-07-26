@@ -1,7 +1,6 @@
 <script>
-    console.log("hello world")
+    import Navbar from "./Navbar.svelte";
 </script>
-
 <div>
-    <div>Hello world</div>
+<Navbar />
 </div>

@@ -4,8 +4,8 @@
 </script>
 
 <div class="min-h-screen bg-gray-900 text-white">
-    <Header />
-    
+   <Header />
+ 
   <main class="p-6">
     <slot />
   </main>
