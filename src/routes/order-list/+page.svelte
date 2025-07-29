@@ -1,16 +1,25 @@
 <script>
   import { onMount } from 'svelte';
   import { writable } from 'svelte/store';
-  import { Plus, Download, TrendingUp, ShoppingCart, Activity, Search, Filter, Calendar, Eye, Trash2, X, Check, AlertCircle } from 'lucide-svelte';
+  import { Plus, Download, TrendingUp, DollarSign, ShoppingBag, Activity, Search, Filter, Calendar, Eye, Trash2, X, Check, AlertCircle } from 'lucide-svelte';
+
+  // API Configuration - Update this when connecting to a real backend
+  const BASE_URL = 'http://localhost:3000/api'; // Replace with your backend URL, e.g., 'https://your-backend.com/api'
+
+  // Optional: Add authentication headers if required
+  const getAuthHeaders = () => ({
+    // 'Authorization': `Bearer ${localStorage.getItem('token') || 'YOUR_TOKEN_HERE'}`, // Uncomment and replace with actual token if needed
+    'Content-Type': 'application/json'
+  });
 
   // Stores for state management
-  const orders = writable([]);
+  const expenses = writable([]);
   const notifications = writable([]);
   const metrics = writable({
-    totalOrders: 0,
-    avgOrderValue: 0,
+    totalExpenses: 0,
+    avgExpense: 0,
     count: 0,
-    fulfillmentRate: '0%',
+    budgetUtilization: '0%',
   });
   const isLoading = writable(true);
 
@@ -18,20 +27,20 @@
   let currentPeriod = 'Today';
   let currentTime = new Date().toLocaleTimeString();
   let searchTerm = '';
-  let statusFilter = 'All';
-  let showNewOrderModal = false;
-  let showOrderDetailsModal = false;
-  let selectedOrder = null;
+  let categoryFilter = 'All';
+  let showNewExpenseModal = false;
+  let showExpenseDetailsModal = false;
+  let selectedExpense = null;
   let isSubmitting = false;
 
   // Form state
   let form = {
-    customer: '',
-    product: 'General Item',
-    quantity: 1,
+    category: 'Operational',
     amount: '',
+    recipient: '',
     description: '',
     date: new Date().toISOString().split('T')[0],
+    budget: 10000, // Default budget
   };
 
   const periodMultiplier = {
@@ -40,68 +49,336 @@
     'This Month': 30,
   };
 
-  // Mock API functions
-  async function fetchOrders(period = 'Today') {
+  /**
+   * Fetches expenses for a given period
+   * Backend Endpoint: GET /api/expenses
+   * Query Parameters:
+   *   - period (string): 'Today', 'This Week', or 'This Month'
+   * Expected Response (JSON):
+   *   - Status: 200 OK
+   *   - Body: Array of expense objects
+   *   - Example:
+   *     [
+   *       {
+   *         "id": "uuid-string",
+   *         "recipient": "VendorSync Ltd",
+   *         "category": "Operational",
+   *         "amount": "1250.50",
+   *         "description": "Expense for Operational costs",
+   *         "date": "2025-07-28",
+   *         "status": "Paid"
+   *       },
+   *       ...
+   *     ]
+   * Error Handling:
+   *   - 400 Bad Request: Invalid period parameter
+   *   - 401 Unauthorized: Missing or invalid authentication token
+   *   - 500 Internal Server Error: Server-side issue
+   * Backend Notes:
+   *   - Filter expenses based on the 'period' query parameter
+   *   - Return an empty array [] if no expenses are found
+   *   - Ensure amount is a string with two decimal places for client-side display
+   *   - Generate unique id (e.g., UUID) for each expense
+   *   - Implement rate limiting to prevent abuse
+   *   - Validate authentication token if required
+   */
+  async function fetchExpenses(period = 'Today') {
     $isLoading = true;
-    const count = Math.floor(Math.random() * 10) + 5;
-    const multiplier = periodMultiplier[period];
-    const products = ['General Item', 'Electronics', 'Clothing', 'Accessories', 'Home Goods'];
-    const customers = ['John Doe', 'Jane Smith', 'Global Traders', 'Tech Buyers', 'Retail Co'];
+    try {
+      // Static data for now
+      await new Promise(r => setTimeout(r, 800));
+      const count = Math.floor(Math.random() * 10) + 5;
+      const multiplier = periodMultiplier[period];
+      const categories = ['Operational', 'Utilities', 'Supplies', 'Travel', 'Miscellaneous'];
+      const recipients = ['VendorSync Ltd', 'Utility Co', 'SupplyChain Inc', 'Travel Agency', 'Miscellaneous Payee'];
 
-    const mock = Array.from({ length: count }, () => ({
-      id: crypto.randomUUID(),
-      customer: customers[Math.floor(Math.random() * customers.length)],
-      product: products[Math.floor(Math.random() * products.length)],
-      quantity: Math.floor(Math.random() * 10) + 1,
-      amount: (Math.random() * 5000 + 100).toFixed(2),
-      description: `Order for ${products[Math.floor(Math.random() * products.length)]}`,
-      date: new Date(Date.now() - Math.floor(Math.random() * multiplier) * 86400000).toISOString().split('T')[0],
-      status: Math.random() > 0.3 ? 'Fulfilled' : Math.random() > 0.5 ? 'Pending' : 'Processing',
-    }));
+      const mock = [];
+      Array.from({ length: count }).forEach(() => {
+        mock.push({
+          id: crypto.randomUUID(),
+          recipient: recipients[Math.floor(Math.random() * recipients.length)],
+          category: categories[Math.floor(Math.random() * categories.length)],
+          amount: (Math.random() * 5000 + 100).toFixed(2),
+          description: `Expense for ${categories[Math.floor(Math.random() * categories.length)]}`,
+          date: new Date(Date.now() - Math.floor(Math.random() * multiplier) * 86400000).toISOString().split('T')[0],
+          status: Math.random() > 0.2 ? 'Paid' : Math.random() > 0.5 ? 'Pending' : 'Processing',
+        });
+      });
 
-    await new Promise(r => setTimeout(r, 800));
-    $orders = mock;
-    updateMetrics(mock);
-    $isLoading = false;
+      // For backend integration, uncomment the following and comment out static data:
+      /*
+      const response = await fetch(`${BASE_URL}/expenses?period=${encodeURIComponent(period)}`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const mock = await response.json();
+      */
+
+      if (!Array.isArray(mock)) {
+        throw new Error('Invalid expense data format');
+      }
+
+      $expenses = mock;
+      updateMetrics(mock);
+    } catch (error) {
+      showNotification(`Failed to fetch expenses: ${error.message}`, 'error');
+    } finally {
+      $isLoading = false;
+    }
   }
 
+  /**
+   * Updates metrics based on expense data
+   * Client-side function, no backend endpoint required
+   * Notes:
+   *   - Calculates totalExpenses, avgExpense, count, and budgetUtilization from expense data
+   *   - Filters for paid expenses only to ensure accurate financial metrics
+   *   - Updates metrics store with formatted values
+   */
   function updateMetrics(data) {
-    const fulfilled = data.filter(t => t.status === 'Fulfilled');
-    const total = fulfilled.reduce((a, b) => a + parseFloat(b.amount), 0);
+    const paid = [];
+    data.forEach(t => {
+      if (t.status === 'Paid') {
+        paid.push(t);
+      }
+    });
+    let total = 0;
+    paid.forEach(t => {
+      total += parseFloat(t.amount);
+    });
     $metrics = {
-      totalOrders: total.toFixed(2),
-      avgOrderValue: fulfilled.length > 0 ? (total / fulfilled.length).toFixed(2) : '0.00',
+      totalExpenses: total.toFixed(2),
+      avgExpense: paid.length > 0 ? (total / paid.length).toFixed(2) : '0.00',
       count: data.length,
-      fulfillmentRate: data.length > 0 ? `${Math.round((fulfilled.length / data.length) * 100)}%` : '0%',
+      budgetUtilization: `${Math.min(Math.round((total / form.budget) * 100), 100)}%`,
     };
   }
 
-  async function createOrder() {
-    if (!form.customer || !form.amount || form.quantity < 1) {
-      showNotification('Please fill in all required fields.', 'error');
+  /**
+   * Creates a new expense
+   * Backend Endpoint: POST /api/expenses
+   * Request Body (JSON):
+   *   - category (string): 'Operational', 'Utilities', 'Supplies', 'Travel', 'Miscellaneous'
+   *   - amount (string): Expense amount with two decimal places
+   *   - recipient (string): Recipient of the expense
+   *   - description (string): Optional description
+   *   - date (string): ISO date string (e.g., '2025-07-28')
+   *   - budget (number): Budget for utilization calculation
+   *   - Example:
+   *     {
+   *       "category": "Operational",
+   *       "amount": "1000.00",
+   *       "recipient": "VendorSync Ltd",
+   *       "description": "Payment for operational costs",
+   *       "date": "2025-07-28",
+   *       "budget": 10000
+   *     }
+   * Expected Response (JSON):
+   *   - Status: 201 Created
+   *   - Body: Created expense object
+   *   - Example:
+   *     {
+   *       "id": "uuid-string",
+   *       "category": "Operational",
+   *       "amount": "1000.00",
+   *       "recipient": "VendorSync Ltd",
+   *       "description": "Payment for operational costs",
+   *       "date": "2025-07-28",
+   *       "status": "Paid",
+   *       "budget": 10000
+   *     }
+   * Error Handling:
+   *   - 400 Bad Request: Missing or invalid fields
+   *   - 401 Unauthorized: Missing or invalid authentication token
+   *   - 500 Internal Server Error: Server-side issue
+   * Backend Notes:
+   *   - Validate required fields (category, amount, recipient, date, budget)
+   *   - Ensure amount is a string with two decimal places
+   *   - Generate unique id (e.g., UUID)
+   *   - Return the full expense object
+   *   - Implement rate limiting to prevent abuse
+   *   - Validate authentication token if required
+   */
+  async function createExpense() {
+    // Client-side validation
+    if (!form.recipient) {
+      showNotification('Recipient is required', 'error');
       return;
     }
+    if (!form.amount || parseFloat(form.amount) <= 0) {
+      showNotification('Amount must be greater than 0', 'error');
+      return;
+    }
+    if (!form.date) {
+      showNotification('Date is required', 'error');
+      return;
+    }
+
     isSubmitting = true;
-    await new Promise(r => setTimeout(r, 1500));
-    const order = {
-      ...form,
-      id: crypto.randomUUID(),
-      status: 'Fulfilled',
-      amount: parseFloat(form.amount).toFixed(2),
-    };
-    $orders = [order, ...$orders];
-    updateMetrics($orders);
-    showNotification('Order added successfully!', 'success');
-    form = {
-      customer: '',
-      product: 'General Item',
-      quantity: 1,
-      amount: '',
-      description: '',
-      date: new Date().toISOString().split('T')[0],
-    };
-    isSubmitting = false;
-    showNewOrderModal = false;
+    try {
+      // Static data for now
+      await new Promise(r => setTimeout(r, 1500));
+      const expense = {
+        ...form,
+        id: crypto.randomUUID(),
+        status: 'Paid',
+        amount: parseFloat(form.amount).toFixed(2), // Ensure two decimal places
+      };
+
+      // For backend integration, uncomment the following and comment out static data:
+      /*
+      const response = await fetch(`${BASE_URL}/expenses`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          category: form.category,
+          amount: parseFloat(form.amount).toFixed(2),
+          recipient: form.recipient,
+          description: form.description,
+          date: form.date,
+          budget: parseFloat(form.budget)
+        })
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const expense = await response.json();
+      */
+
+      $expenses = [expense, ...$expenses];
+      updateMetrics($expenses);
+      showNotification('Expense added successfully!', 'success');
+      form = {
+        category: 'Operational',
+        amount: '',
+        recipient: '',
+        description: '',
+        date: new Date().toISOString().split('T')[0],
+        budget: form.budget,
+      };
+      showNewExpenseModal = false;
+    } catch (error) {
+      showNotification(`Failed to create expense: ${error.message}`, 'error');
+    } finally {
+      isSubmitting = false;
+    }
+  }
+
+  /**
+   * Deletes an expense by ID
+   * Backend Endpoint: DELETE /api/expenses/:id
+   * URL Parameters:
+   *   - id (string): Expense ID
+   * Expected Response (JSON):
+   *   - Status: 200 OK
+   *   - Body: { success: true }
+   *   - Example:
+   *     {
+   *       "success": true
+   *     }
+   * Error Handling:
+   *   - 404 Not Found: Expense ID not found
+   *   - 401 Unauthorized: Missing or invalid authentication token
+   *   - 500 Internal Server Error: Server-side issue
+   * Backend Notes:
+   *   - Verify the expense ID exists before deletion
+   *   - Return { success: true } on successful deletion
+   *   - Implement rate limiting to prevent abuse
+   *   - Validate authentication token if required
+   */
+  async function deleteExpense(id) {
+    try {
+      // Static data for now
+      await new Promise(r => setTimeout(r, 500));
+
+      // For backend integration, uncomment the following:
+      /*
+      const response = await fetch(`${BASE_URL}/expenses/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error('Failed to delete expense');
+      }
+      */
+
+      $expenses = $expenses.filter(t => t.id !== id);
+      updateMetrics($expenses);
+      showNotification('Expense deleted successfully!', 'success');
+    } catch (error) {
+      showNotification(`Failed to delete expense: ${error.message}`, 'error');
+    }
+  }
+
+  /**
+   * Exports expenses as CSV
+   * Client-side function, but can leverage GET /api/expenses/csv for data
+   * Backend Endpoint (optional): GET /api/expenses/csv
+   * Query Parameters:
+   *   - period (string): 'Today', 'This Week', or 'This Month'
+   *   - category (string): 'All', 'Operational', 'Utilities', 'Supplies', 'Travel', 'Miscellaneous'
+   *   - search (string): Search term for recipient or category
+   * Expected Response (optional server-side CSV):
+   *   - Status: 200 OK
+   *   - Content-Type: text/csv
+   *   - Body: CSV content with headers: Date,Recipient,Category,Amount,Status,Description
+   * Client-side Notes:
+   *   - Generates CSV from filteredExpenses using client-side filtering
+   *   - Escapes commas in fields to prevent CSV formatting issues
+   * Backend Notes:
+   *   - Optionally implement server-side CSV generation to reduce client-side processing
+   *   - Ensure CSV headers match client-side expectations
+   *   - Apply same filtering logic (recipient, category) server-side if implemented
+   *   - Implement rate limiting to prevent abuse
+   */
+  function exportCSV() {
+    try {
+      const headers = ['Date', 'Recipient', 'Category', 'Amount', 'Status', 'Description'];
+      const rows = [];
+      filteredExpenses.forEach(t => {
+        // Escape commas in fields to prevent CSV formatting issues
+        const escapedRow = [
+          t.date,
+          `"${t.recipient.replace(/"/g, '""')}"`,
+          t.category,
+          t.amount,
+          t.status,
+          `"${t.description.replace(/"/g, '""')}"`
+        ];
+        rows.push(escapedRow);
+      });
+
+      // For server-side CSV generation, uncomment the following and comment out client-side logic:
+      /*
+      const response = await fetch(`${BASE_URL}/expenses/csv?period=${encodeURIComponent(currentPeriod)}&category=${encodeURIComponent(categoryFilter)}&search=${encodeURIComponent(searchTerm)}`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const csv = await response.text();
+      */
+
+      const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+      const uri = encodeURI('data:text/csv;charset=utf-8,' + csv);
+      const link = document.createElement('a');
+      link.setAttribute('href', uri);
+      link.setAttribute('download', `expenses_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showNotification('CSV exported successfully!', 'success');
+    } catch (error) {
+      showNotification(`Failed to export CSV: ${error.message}`, 'error');
+    }
   }
 
   function showNotification(message, type = 'info') {
@@ -112,59 +389,31 @@
     }, 5000);
   }
 
-  function exportCSV() {
-    const headers = ['Date', 'Customer', 'Product', 'Quantity', 'Amount', 'Status', 'Description'];
-    const rows = filteredOrders.map(t => [
-      t.date,
-      t.customer,
-      t.product,
-      t.quantity,
-      t.amount,
-      t.status,
-      t.description || '',
-    ]);
-    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
-    const uri = encodeURI('data:text/csv;charset=utf-8,' + csv);
-    const link = document.createElement('a');
-    link.setAttribute('href', uri);
-    link.setAttribute('download', `orders_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showNotification('CSV exported successfully!', 'success');
-  }
-
-  function deleteOrder(id) {
-    $orders = $orders.filter(t => t.id !== id);
-    updateMetrics($orders);
-    showNotification('Order deleted successfully!', 'success');
-  }
-
-  // Reactive filtered orders
-  $: filteredOrders = $orders.filter(order => {
-    const matchesSearch = order.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         order.product.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'All' || order.status === statusFilter;
-    return matchesSearch && matchesStatus;
+  // Reactive filtered expenses
+  $: filteredExpenses = $expenses.filter(expense => {
+    const matchesSearch = expense.recipient.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         expense.category.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = categoryFilter === 'All' || expense.category === categoryFilter;
+    return matchesSearch && matchesCategory;
   });
 
   // Initialize data and time updates
   onMount(async () => {
-    await fetchOrders();
+    await fetchExpenses();
     const interval = setInterval(() => {
       currentTime = new Date().toLocaleTimeString();
     }, 1000);
     return () => clearInterval(interval);
   });
 
-  // Fetch orders when period changes
+  // Fetch expenses when period changes
   $: if (currentPeriod) {
-    fetchOrders(currentPeriod);
+    fetchExpenses(currentPeriod);
   }
 
   function getStatusColor(status) {
     switch (status) {
-      case 'Fulfilled': return 'bg-green-600/20 text-green-400 border-green-600/50';
+      case 'Paid': return 'bg-green-600/20 text-green-400 border-green-600/50';
       case 'Pending': return 'bg-yellow-600/20 text-yellow-300 border-yellow-600/50';
       case 'Processing': return 'bg-blue-600/20 text-blue-400 border-blue-600/50';
       default: return 'bg-gray-600/20 text-gray-400 border-gray-600/50';
@@ -194,20 +443,10 @@
           animation: {
             'fade-in-up': 'fadeInUp 0.6s ease-out forwards',
             'pulse': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-          },
-          keyframes: {
-            fadeInUp: {
-              '0%': { opacity: '0', transform: 'translateY(20px)' },
-              '100%': { opacity: '1', transform: 'translateY(0)' },
-            },
-            pulse: {
-              '0%, 100%': { opacity: '1' },
-              '50%': { opacity: '0.5' },
-            },
-          },
-        },
-      },
-    };
+          }
+        }
+      }
+    }
   </script>
 </svelte:head>
 
@@ -233,9 +472,9 @@
     <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8">
       <div>
         <h1 class="text-5xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-          Order Management Dashboard
+          Expense Dashboard
         </h1>
-        <p class="text-gray-400">Real-time order tracking and analytics</p>
+        <p class="text-gray-400">Real-time expense tracking and analytics</p>
         <p class="text-sm text-gray-500 mt-1">Last updated: {currentTime}</p>
       </div>
       <div class="flex items-center space-x-4 mt-4 lg:mt-0">
@@ -248,11 +487,11 @@
           <option value="This Month">This Month</option>
         </select>
         <button 
-          on:click={() => showNewOrderModal = true}
+          on:click={() => showNewExpenseModal = true}
           class="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 px-6 py-2 rounded-lg font-medium transition-all duration-200 flex items-center space-x-2 shadow-lg"
         >
           <Plus class="w-5 h-5" />
-          <span>New Order</span>
+          <span>New Expense</span>
         </button>
       </div>
     </div>
@@ -262,17 +501,17 @@
       <div class="bg-gray-900/80 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-gray-800/50 hover:bg-gray-800/80 transition-all duration-300 animate-fade-in-up">
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-sm font-medium text-gray-400 mb-1">Total Order Value</p>
-            <h2 class="text-3xl font-bold text-green-400">Rs. {$metrics.totalOrders}</h2>
+            <p class="text-sm font-medium text-gray-400 mb-1">Total Expenses</p>
+            <h2 class="text-3xl font-bold text-green-400">Rs. {$metrics.totalExpenses}</h2>
           </div>
-          <ShoppingCart class="w-8 h-8 text-green-400" />
+          <DollarSign class="w-8 h-8 text-green-400" />
         </div>
       </div>
       <div class="bg-gray-900/80 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-gray-800/50 hover:bg-gray-800/80 transition-all duration-300 animate-fade-in-up" style="animation-delay: 0.1s;">
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-sm font-medium text-gray-400 mb-1">Average Order Value</p>
-            <h2 class="text-3xl font-bold text-blue-400">Rs. {$metrics.avgOrderValue}</h2>
+            <p class="text-sm font-medium text-gray-400 mb-1">Average Expense</p>
+            <h2 class="text-3xl font-bold text-blue-400">Rs. {$metrics.avgExpense}</h2>
           </div>
           <TrendingUp class="w-8 h-8 text-blue-400" />
         </div>
@@ -280,7 +519,7 @@
       <div class="bg-gray-900/80 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-gray-800/50 hover:bg-gray-800/80 transition-all duration-300 animate-fade-in-up" style="animation-delay: 0.2s;">
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-sm font-medium text-gray-400 mb-1">Total Orders</p>
+            <p class="text-sm font-medium text-gray-400 mb-1">Expense Entries</p>
             <h2 class="text-3xl font-bold text-purple-400">{$metrics.count}</h2>
           </div>
           <Activity class="w-8 h-8 text-purple-400" />
@@ -289,10 +528,10 @@
       <div class="bg-gray-900/80 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-gray-800/50 hover:bg-gray-800/80 transition-all duration-300 animate-fade-in-up" style="animation-delay: 0.3s;">
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-sm font-medium text-gray-400 mb-1">Fulfillment Rate</p>
-            <h2 class="text-3xl font-bold text-orange-400">{$metrics.fulfillmentRate}</h2>
+            <p class="text-sm font-medium text-gray-400 mb-1">Budget Utilization</p>
+            <h2 class="text-3xl font-bold text-orange-400">{$metrics.budgetUtilization}</h2>
           </div>
-          <Check class="w-8 h-8 text-orange-400" />
+          <ShoppingBag class="w-8 h-8 text-orange-400" />
         </div>
       </div>
     </div>
@@ -304,19 +543,21 @@
           <Search class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
             type="text"
-            placeholder="Search orders..."
+            placeholder="Search expenses..."
             bind:value={searchTerm}
             class="bg-black/50 backdrop-blur-md border border-gray-800/50 rounded-lg pl-10 pr-4 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-600 w-full sm:w-64"
           />
         </div>
         <select 
-          bind:value={statusFilter}
+          bind:value={categoryFilter}
           class="bg-black/50 backdrop-blur-md border border-gray-800/50 rounded-lg px-4 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-600"
         >
-          <option value="All">All Statuses</option>
-          <option value="Fulfilled">Fulfilled</option>
-          <option value="Pending">Pending</option>
-          <option value="Processing">Processing</option>
+          <option value="All">All Categories</option>
+          <option value="Operational">Operational</option>
+          <option value="Utilities">Utilities</option>
+          <option value="Supplies">Supplies</option>
+          <option value="Travel">Travel</option>
+          <option value="Miscellaneous">Miscellaneous</option>
         </select>
       </div>
       <button 
@@ -328,7 +569,7 @@
       </button>
     </div>
 
-    <!-- Orders Table -->
+    <!-- Expenses Table -->
     <div class="bg-gray-900/50 backdrop-blur-md rounded-2xl border border-gray-800/50 shadow-xl overflow-hidden">
       {#if $isLoading}
         <div class="flex items-center justify-center p-12">
@@ -340,36 +581,34 @@
             <thead class="bg-gray-900/30 border-b border-gray-800/50">
               <tr>
                 <th class="px-6 py-4 text-left font-semibold text-gray-400">Date</th>
-                <th class="px-6 py-4 text-left font-semibold text-gray-400">Customer</th>
-                <th class="px-6 py-4 text-left font-semibold text-gray-400">Product</th>
-                <th class="px-6 py-4 text-left font-semibold text-gray-400">Quantity</th>
+                <th class="px-6 py-4 text-left font-semibold text-gray-400">Recipient</th>
+                <th class="px-6 py-4 text-left font-semibold text-gray-400">Category</th>
                 <th class="px-6 py-4 text-left font-semibold text-gray-400">Amount</th>
                 <th class="px-6 py-4 text-left font-semibold text-gray-400">Status</th>
                 <th class="px-6 py-4 text-left font-semibold text-gray-400">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {#each filteredOrders as order, index}
+              {#each filteredExpenses as expense, index}
                 <tr 
                   class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-all duration-200"
                   style="animation-delay: {index * 0.1}s;"
                 >
-                  <td class="px-6 py-4 text-gray-400">{order.date}</td>
-                  <td class="px-6 py-4 font-medium text-gray-100">{order.customer}</td>
-                  <td class="px-6 py-4 text-gray-400">{order.product}</td>
-                  <td class="px-6 py-4 text-gray-400">{order.quantity}</td>
-                  <td class="px-6 py-4 font-semibold text-green-400">Rs. {order.amount}</td>
+                  <td class="px-6 py-4 text-gray-400">{expense.date}</td>
+                  <td class="px-6 py-4 font-medium text-gray-100">{expense.recipient}</td>
+                  <td class="px-6 py-4 text-gray-400">{expense.category}</td>
+                  <td class="px-6 py-4 font-semibold text-green-400">Rs. {expense.amount}</td>
                   <td class="px-6 py-4">
-                    <span class="px-3 py-1 rounded-full text-xs font-semibold border {getStatusColor(order.status)}">
-                      {order.status}
+                    <span class="px-3 py-1 rounded-full text-xs font-semibold border {getStatusColor(expense.status)}">
+                      {expense.status}
                     </span>
                   </td>
                   <td class="px-6 py-4">
                     <div class="flex items-center space-x-2">
                       <button 
                         on:click={() => {
-                          selectedOrder = order;
-                          showOrderDetailsModal = true;
+                          selectedExpense = expense;
+                          showExpenseDetailsModal = true;
                         }}
                         class="p-2 hover:bg-gray-800/50 rounded-lg transition-colors"
                         title="View Details"
@@ -377,7 +616,7 @@
                         <Eye class="w-4 h-4 text-blue-400" />
                       </button>
                       <button 
-                        on:click={() => deleteOrder(order.id)}
+                        on:click={() => deleteExpense(expense.id)}
                         class="p-2 hover:bg-gray-800/50 rounded-lg transition-colors"
                         title="Delete"
                       >
@@ -389,24 +628,24 @@
               {/each}
             </tbody>
           </table>
-          {#if filteredOrders.length === 0}
+          {#if filteredExpenses.length === 0}
             <div class="text-center py-12 text-gray-400">
               <Activity class="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>No orders found</p>
+              <p>No expenses found</p>
             </div>
           {/if}
         </div>
       {/if}
     </div>
 
-    <!-- New Order Modal -->
-    {#if showNewOrderModal}
-      <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" on:click|self={() => showNewOrderModal = false}>
+    <!-- New Expense Modal -->
+    {#if showNewExpenseModal}
+      <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" on:click|self={() => showNewExpenseModal = false}>
         <div class="bg-gray-900/80 backdrop-blur-md rounded-2xl border border-gray-800/50 p-8 w-full max-w-md shadow-2xl">
           <div class="flex justify-between items-center mb-6">
-            <h3 class="text-2xl font-bold text-gray-100">New Order Entry</h3>
+            <h3 class="text-2xl font-bold text-gray-100">New Expense Entry</h3>
             <button 
-              on:click={() => showNewOrderModal = false}
+              on:click={() => showNewExpenseModal = false}
               class="p-2 hover:bg-gray-800/50 rounded-lg transition-colors"
             >
               <X class="w-6 h-6 text-gray-400" />
@@ -414,38 +653,26 @@
           </div>
           <div class="space-y-4">
             <div>
-              <label class="block text-sm font-medium text-gray-400 mb-2">Customer</label>
-              <input 
-                type="text" 
-                bind:value={form.customer}
-                class="w-full bg-black/50 border border-gray-800/50 rounded-lg px-4 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-600"
-                placeholder="Customer name"
-                required
-              />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-400 mb-2">Product</label>
+              <label class="block text-sm font-medium text-gray-400 mb-2">Category</label>
               <select 
-                bind:value={form.product}
+                bind:value={form.category}
                 class="w-full bg-black/50 border border-gray-800/50 rounded-lg px-4 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-600"
               >
-                <option value="General Item">General Item</option>
-                <option value="Electronics">Electronics</option>
-                <option value="Clothing">Clothing</option>
-                <option value="Accessories">Accessories</option>
-                <option value="Home Goods">Home Goods</option>
+                <option value="Operational">Operational</option>
+                <option value="Utilities">Utilities</option>
+                <option value="Supplies">Supplies</option>
+                <option value="Travel">Travel</option>
+                <option value="Miscellaneous">Miscellaneous</option>
               </select>
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-400 mb-2">Quantity</label>
+              <label class="block text-sm font-medium text-gray-400 mb-2">Recipient</label>
               <input 
-                type="number" 
-                bind:value={form.quantity}
+                type="text" 
+                bind:value={form.recipient}
                 class="w-full bg-black/50 border border-gray-800/50 rounded-lg px-4 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-600"
-                placeholder="1"
+                placeholder="Recipient name"
                 required
-                min="1"
-                step="1"
               />
             </div>
             <div>
@@ -461,11 +688,23 @@
               />
             </div>
             <div>
+              <label class="block text-sm font-medium text-gray-400 mb-2">Budget (Rs.)</label>
+              <input 
+                type="number" 
+                bind:value={form.budget}
+                class="w-full bg-black/50 border border-gray-800/50 rounded-lg px-4 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                placeholder="10000.00"
+                required
+                min="0"
+                step="0.01"
+              />
+            </div>
+            <div>
               <label class="block text-sm font-medium text-gray-400 mb-2">Description</label>
               <textarea 
                 bind:value={form.description}
                 class="w-full bg-black/50 border border-gray-800/50 rounded-lg px-4 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-600 h-20 resize-none"
-                placeholder="Order description"
+                placeholder="Expense description"
               ></textarea>
             </div>
             <div>
@@ -479,17 +718,17 @@
             </div>
             <div class="flex gap-4 pt-4">
               <button 
-                on:click={() => showNewOrderModal = false}
+                on:click={() => showNewExpenseModal = false}
                 class="flex-1 bg-gray-800 hover:bg-gray-700 border border-gray-800/50 px-4 py-2 rounded-lg font-medium transition-all duration-200 text-gray-100"
               >
                 Cancel
               </button>
               <button 
-                on:click={createOrder}
+                on:click={createExpense}
                 disabled={isSubmitting}
                 class="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg font-medium transition-all duration-200"
               >
-                {isSubmitting ? 'Saving...' : 'Save Order'}
+                {isSubmitting ? 'Saving...' : 'Save Expense'}
               </button>
             </div>
           </div>
@@ -497,14 +736,14 @@
       </div>
     {/if}
 
-    <!-- Order Details Modal -->
-    {#if showOrderDetailsModal && selectedOrder}
-      <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" on:click|self={() => showOrderDetailsModal = false}>
+    <!-- Expense Details Modal -->
+    {#if showExpenseDetailsModal && selectedExpense}
+      <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" on:click|self={() => showExpenseDetailsModal = false}>
         <div class="bg-gray-900/80 backdrop-blur-md rounded-2xl border border-gray-800/50 p-8 w-full max-w-md shadow-2xl">
           <div class="flex justify-between items-center mb-6">
-            <h3 class="text-2xl font-bold text-gray-100">Order Details</h3>
+            <h3 class="text-2xl font-bold text-gray-100">Expense Details</h3>
             <button 
-              on:click={() => showOrderDetailsModal = false}
+              on:click={() => showExpenseDetailsModal = false}
               class="p-2 hover:bg-gray-800/50 rounded-lg transition-colors"
             >
               <X class="w-6 h-6 text-gray-400" />
@@ -512,34 +751,30 @@
           </div>
           <div class="space-y-4">
             <div class="flex justify-between items-center py-3 border-b border-gray-800/50">
-              <span class="text-gray-400">Customer:</span>
-              <span class="font-medium text-gray-100">{selectedOrder.customer}</span>
+              <span class="text-gray-400">Recipient:</span>
+              <span class="font-medium text-gray-100">{selectedExpense.recipient}</span>
             </div>
             <div class="flex justify-between items-center py-3 border-b border-gray-800/50">
-              <span class="text-gray-400">Product:</span>
-              <span class="font-medium text-gray-100">{selectedOrder.product}</span>
-            </div>
-            <div class="flex justify-between items-center py-3 border-b border-gray-800/50">
-              <span class="text-gray-400">Quantity:</span>
-              <span class="font-medium text-gray-100">{selectedOrder.quantity}</span>
+              <span class="text-gray-400">Category:</span>
+              <span class="font-medium text-gray-100">{selectedExpense.category}</span>
             </div>
             <div class="flex justify-between items-center py-3 border-b border-gray-800/50">
               <span class="text-gray-400">Amount:</span>
-              <span class="font-semibold text-green-400">Rs. {selectedOrder.amount}</span>
+              <span class="font-semibold text-green-400">Rs. {selectedExpense.amount}</span>
             </div>
             <div class="flex justify-between items-center py-3 border-b border-gray-800/50">
               <span class="text-gray-400">Date:</span>
-              <span class="font-medium text-gray-100">{selectedOrder.date}</span>
+              <span class="font-medium text-gray-100">{selectedExpense.date}</span>
             </div>
             <div class="flex justify-between items-center py-3 border-b border-gray-800/50">
               <span class="text-gray-400">Status:</span>
-              <span class="px-3 py-1 rounded-full text-xs font-semibold border {getStatusColor(selectedOrder.status)}">
-                {selectedOrder.status}
+              <span class="px-3 py-1 rounded-full text-xs font-semibold border {getStatusColor(selectedExpense.status)}">
+                {selectedExpense.status}
               </span>
             </div>
             <div class="py-3">
               <span class="text-gray-400 block mb-2">Description:</span>
-              <p class="text-gray-100 bg-gray-800/50 p-3 rounded-lg">{selectedOrder.description || 'No description provided'}</p>
+              <p class="text-gray-100 bg-gray-800/50 p-3 rounded-lg">{selectedExpense.description || 'No description provided'}</p>
             </div>
           </div>
         </div>
@@ -549,6 +784,26 @@
 </div>
 
 <style>
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+
   :global(html) {
     scroll-behavior: smooth;
   }

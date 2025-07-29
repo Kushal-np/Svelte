@@ -3,6 +3,15 @@
   import { writable } from 'svelte/store';
   import { Plus, Download, TrendingUp, DollarSign, Users, Activity, Search, Filter, Calendar, Eye, Trash2, X, Check, AlertCircle } from 'lucide-svelte';
 
+  // API Configuration - Update this when connecting to a real backend
+  const BASE_URL = 'http://localhost:3000/api'; // Replace with your backend URL, e.g., 'https://your-backend.com/api'
+
+  // Optional: Add authentication headers if required
+  const getAuthHeaders = () => ({
+    // 'Authorization': `Bearer ${localStorage.getItem('token') || 'YOUR_TOKEN_HERE'}`, // Uncomment and replace with actual token if needed
+    'Content-Type': 'application/json'
+  });
+
   // Stores for state management
   const transactions = writable([]);
   const notifications = writable([]);
@@ -40,62 +49,338 @@
     'This Month': 30
   };
 
-  // Mock API functions
+  /**
+   * Fetches transactions for a given period
+   * Backend Endpoint: GET /api/transactions
+   * Query Parameters:
+   *   - period (string): 'Today', 'This Week', or 'This Month'
+   * Expected Response (JSON):
+   *   - Status: 200 OK
+   *   - Body: Array of transaction objects
+   *   - Example:
+   *     [
+   *       {
+   *         "id": "uuid-string",
+   *         "supplier": "VendorSync Ltd",
+   *         "item": "Raw Materials",
+   *         "amount": "1250.50",
+   *         "description": "Purchase of Raw Materials",
+   *         "date": "2025-07-28",
+   *         "status": "Paid",
+   *         "type": "Purchase"
+   *       },
+   *       ...
+   *     ]
+   * Error Handling:
+   *   - 400 Bad Request: Invalid period parameter
+   *   - 401 Unauthorized: Missing or invalid authentication token
+   *   - 500 Internal Server Error: Server-side issue
+   * Backend Notes:
+   *   - Filter transactions based on the 'period' query parameter
+   *   - Return an empty array [] if no transactions are found
+   *   - Ensure amount is a string with two decimal places for client-side display
+   *   - Generate unique id (e.g., UUID) for each transaction
+   *   - Implement rate limiting to prevent abuse
+   *   - Validate authentication token if required
+   */
   async function fetchTransactions(period = 'Today') {
     $isLoading = true;
-    const count = Math.floor(Math.random() * 10) + 5;
-    const multiplier = periodMultiplier[period];
-    const items = ['Raw Materials', 'Equipment', 'Consulting Services', 'Software Subscription', 'Packaging'];
-    const suppliers = ['VendorSync Ltd', 'SupplyChain Inc', 'Global Supplies', 'TechProcure', 'MaterialWorks'];
+    try {
+      // Static data for now
+      await new Promise(r => setTimeout(r, 800));
+      const count = Math.floor(Math.random() * 10) + 5;
+      const multiplier = periodMultiplier[period];
+      const items = ['Raw Materials', 'Equipment', 'Consulting Services', 'Software Subscription', 'Packaging'];
+      const suppliers = ['VendorSync Ltd', 'SupplyChain Inc', 'Global Supplies', 'TechProcure', 'MaterialWorks'];
 
-    const mock = Array.from({ length: count }, () => ({
-      id: crypto.randomUUID(),
-      supplier: suppliers[Math.floor(Math.random() * suppliers.length)],
-      item: items[Math.floor(Math.random() * items.length)],
-      amount: (Math.random() * 20000 + 1000).toFixed(2),
-      description: `Purchase of ${items[Math.floor(Math.random() * items.length)]}`,
-      date: new Date(Date.now() - Math.floor(Math.random() * multiplier) * 86400000).toISOString().split('T')[0],
-      status: Math.random() > 0.2 ? 'Paid' : Math.random() > 0.5 ? 'Pending' : 'Processing'
-    }));
+      const mock = [];
+      Array.from({ length: count }).forEach(() => {
+        mock.push({
+          id: crypto.randomUUID(),
+          supplier: suppliers[Math.floor(Math.random() * suppliers.length)],
+          item: items[Math.floor(Math.random() * items.length)],
+          amount: (Math.random() * 20000 + 1000).toFixed(2),
+          description: `Purchase of ${items[Math.floor(Math.random() * items.length)]}`,
+          date: new Date(Date.now() - Math.floor(Math.random() * multiplier) * 86400000).toISOString().split('T')[0],
+          status: Math.random() > 0.2 ? 'Paid' : Math.random() > 0.5 ? 'Pending' : 'Processing',
+          type: form.type
+        });
+      });
 
-    await new Promise(r => setTimeout(r, 800));
-    $transactions = mock;
-    updateMetrics(mock);
-    $isLoading = false;
+      // For backend integration, uncomment the following and comment out static data:
+      /*
+      const response = await fetch(`${BASE_URL}/transactions?period=${encodeURIComponent(period)}`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const mock = await response.json();
+      */
+
+      if (!Array.isArray(mock)) {
+        throw new Error('Invalid transaction data format');
+      }
+
+      $transactions = mock;
+      updateMetrics(mock);
+    } catch (error) {
+      showNotification(`Failed to fetch transactions: ${error.message}`, 'error');
+    } finally {
+      $isLoading = false;
+    }
   }
 
+  /**
+   * Updates metrics based on transaction data
+   * Client-side function, no backend endpoint required
+   * Notes:
+   *   - Calculates totalPurchases, avgPurchase, count, and completionRate from transaction data
+   *   - Filters for paid transactions only to ensure accurate financial metrics
+   *   - Updates metrics store with formatted values
+   */
   function updateMetrics(data) {
-    const paid = data.filter(t => t.status === 'Paid');
-    const total = paid.reduce((a, b) => a + parseFloat(b.amount), 0);
+    const paid = [];
+    data.forEach(t => {
+      if (t.status === 'Paid') {
+        paid.push(t);
+      }
+    });
+    let total = 0;
+    paid.forEach(t => {
+      total += parseFloat(t.amount);
+    });
     $metrics = {
       totalPurchases: total.toFixed(2),
       avgPurchase: paid.length > 0 ? (total / paid.length).toFixed(2) : '0.00',
       count: data.length,
-      completionRate: `${Math.round((paid.length / data.length) * 100)}%`
+      completionRate: data.length > 0 ? `${Math.round((paid.length / data.length) * 100)}%` : '0%'
     };
   }
 
+  /**
+   * Creates a new transaction
+   * Backend Endpoint: POST /api/transactions
+   * Request Body (JSON):
+   *   - type (string): 'Purchase', 'Return', 'Service'
+   *   - amount (string): Transaction amount with two decimal places
+   *   - supplier (string): Supplier of the transaction
+   *   - item (string): 'Raw Materials', 'Equipment', 'Consulting Services', 'Software Subscription', 'Packaging'
+   *   - description (string): Optional description
+   *   - date (string): ISO date string (e.g., '2025-07-28')
+   *   - Example:
+   *     {
+   *       "type": "Purchase",
+   *       "amount": "1000.00",
+   *       "supplier": "VendorSync Ltd",
+   *       "item": "Raw Materials",
+   *       "description": "Purchase of Raw Materials",
+   *       "date": "2025-07-28"
+   *     }
+   * Expected Response (JSON):
+   *   - Status: 201 Created
+   *   - Body: Created transaction object
+   *   - Example:
+   *     {
+   *       "id": "uuid-string",
+   *       "type": "Purchase",
+   *       "amount": "1000.00",
+   *       "supplier": "VendorSync Ltd",
+   *       "item": "Raw Materials",
+   *       "description": "Purchase of Raw Materials",
+   *       "date": "2025-07-28",
+   *       "status": "Paid"
+   *     }
+   * Error Handling:
+   *   - 400 Bad Request: Missing or invalid fields
+   *   - 401 Unauthorized: Missing or invalid authentication token
+   *   - 500 Internal Server Error: Server-side issue
+   * Backend Notes:
+   *   - Validate required fields (type, amount, supplier, item, date)
+   *   - Ensure amount is a string with two decimal places
+   *   - Generate unique id (e.g., UUID)
+   *   - Return the full transaction object
+   *   - Implement rate limiting to prevent abuse
+   *   - Validate authentication token if required
+   */
   async function createTransaction() {
+    // Client-side validation
+    if (!form.supplier) {
+      showNotification('Supplier is required', 'error');
+      return;
+    }
+    if (!form.amount || parseFloat(form.amount) <= 0) {
+      showNotification('Amount must be greater than 0', 'error');
+      return;
+    }
+    if (!form.date) {
+      showNotification('Date is required', 'error');
+      return;
+    }
+
     isSubmitting = true;
-    await new Promise(r => setTimeout(r, 1500));
-    const transaction = {
-      ...form,
-      id: crypto.randomUUID(),
-      status: 'Paid'
-    };
-    $transactions = [transaction, ...$transactions];
-    updateMetrics($transactions);
-    showNotification('Purchase saved successfully!', 'success');
-    form = {
-      type: 'Purchase',
-      amount: '',
-      supplier: '',
-      item: 'Raw Materials',
-      description: '',
-      date: new Date().toISOString().split('T')[0]
-    };
-    isSubmitting = false;
-    showNewPurchaseModal = false;
+    try {
+      // Static data for now
+      await new Promise(r => setTimeout(r, 1500));
+      const transaction = {
+        ...form,
+        id: crypto.randomUUID(),
+        status: 'Paid',
+        amount: parseFloat(form.amount).toFixed(2) // Ensure two decimal places
+      };
+
+      // For backend integration, uncomment the following and comment out static data:
+      /*
+      const response = await fetch(`${BASE_URL}/transactions`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          type: form.type,
+          amount: parseFloat(form.amount).toFixed(2),
+          supplier: form.supplier,
+          item: form.item,
+          description: form.description,
+          date: form.date
+        })
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const transaction = await response.json();
+      */
+
+      $transactions = [transaction, ...$transactions];
+      updateMetrics($transactions);
+      showNotification('Purchase saved successfully!', 'success');
+      form = {
+        type: 'Purchase',
+        amount: '',
+        supplier: '',
+        item: 'Raw Materials',
+        description: '',
+        date: new Date().toISOString().split('T')[0]
+      };
+      showNewPurchaseModal = false;
+    } catch (error) {
+      showNotification(`Failed to create transaction: ${error.message}`, 'error');
+    } finally {
+      isSubmitting = false;
+    }
+  }
+
+  /**
+   * Deletes a transaction by ID
+   * Backend Endpoint: DELETE /api/transactions/:id
+   * URL Parameters:
+   *   - id (string): Transaction ID
+   * Expected Response (JSON):
+   *   - Status: 200 OK
+   *   - Body: { success: true }
+   *   - Example:
+   *     {
+   *       "success": true
+   *     }
+   * Error Handling:
+   *   - 404 Not Found: Transaction ID not found
+   *   - 401 Unauthorized: Missing or invalid authentication token
+   *   - 500 Internal Server Error: Server-side issue
+   * Backend Notes:
+   *   - Verify the transaction ID exists before deletion
+   *   - Return { success: true } on successful deletion
+   *   - Implement rate limiting to prevent abuse
+   *   - Validate authentication token if required
+   */
+  async function deleteTransaction(id) {
+    try {
+      // Static data for now
+      await new Promise(r => setTimeout(r, 500));
+
+      // For backend integration, uncomment the following:
+      /*
+      const response = await fetch(`${BASE_URL}/transactions/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error('Failed to delete transaction');
+      }
+      */
+
+      $transactions = $transactions.filter(t => t.id !== id);
+      updateMetrics($transactions);
+      showNotification('Purchase deleted successfully!', 'success');
+    } catch (error) {
+      showNotification(`Failed to delete transaction: ${error.message}`, 'error');
+    }
+  }
+
+  /**
+   * Exports transactions as CSV
+   * Client-side function, but can leverage GET /api/transactions/csv for data
+   * Backend Endpoint (optional): GET /api/transactions/csv
+   * Query Parameters:
+   *   - period (string): 'Today', 'This Week', or 'This Month'
+   *   - status (string): 'All', 'Paid', 'Pending', 'Processing'
+   *   - search (string): Search term for supplier or item
+   * Expected Response (optional server-side CSV):
+   *   - Status: 200 OK
+   *   - Content-Type: text/csv
+   *   - Body: CSV content with headers: Date,Supplier,Item,Amount,Status,Description
+   * Client-side Notes:
+   *   - Generates CSV from filteredTransactions using client-side filtering
+   *   - Escapes commas in fields to prevent CSV formatting issues
+   * Backend Notes:
+   *   - Optionally implement server-side CSV generation to reduce client-side processing
+   *   - Ensure CSV headers match client-side expectations
+   *   - Apply same filtering logic (supplier, item, status) server-side if implemented
+   *   - Implement rate limiting to prevent abuse
+   */
+  function exportCSV() {
+    try {
+      const headers = ['Date', 'Supplier', 'Item', 'Amount', 'Status', 'Description'];
+      const rows = [];
+      filteredTransactions.forEach(t => {
+        // Escape commas in fields to prevent CSV formatting issues
+        const escapedRow = [
+          t.date,
+          `"${t.supplier.replace(/"/g, '""')}"`,
+          t.item,
+          t.amount,
+          t.status,
+          `"${t.description.replace(/"/g, '""')}"`
+        ];
+        rows.push(escapedRow);
+      });
+
+      // For server-side CSV generation, uncomment the following and comment out client-side logic:
+      /*
+      const response = await fetch(`${BASE_URL}/transactions/csv?period=${encodeURIComponent(currentPeriod)}&status=${encodeURIComponent(statusFilter)}&search=${encodeURIComponent(searchTerm)}`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const csv = await response.text();
+      */
+
+      const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+      const uri = encodeURI('data:text/csv;charset=utf-8,' + csv);
+      const link = document.createElement('a');
+      link.setAttribute('href', uri);
+      link.setAttribute('download', `purchases_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showNotification('CSV exported successfully!', 'success');
+    } catch (error) {
+      showNotification(`Failed to export CSV: ${error.message}`, 'error');
+    }
   }
 
   function showNotification(message, type = 'info') {
@@ -104,26 +389,6 @@
     setTimeout(() => {
       $notifications = $notifications.filter(note => note.id !== id);
     }, 5000);
-  }
-
-  function exportCSV() {
-    const headers = ['Date', 'Supplier', 'Item', 'Amount', 'Status', 'Description'];
-    const rows = filteredTransactions.map(t => [t.date, t.supplier, t.item, t.amount, t.status, t.description]);
-    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
-    const uri = encodeURI('data:text/csv;charset=utf-8,' + csv);
-    const link = document.createElement('a');
-    link.setAttribute('href', uri);
-    link.setAttribute('download', `purchases_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showNotification('CSV exported successfully!', 'success');
-  }
-
-  function deleteTransaction(id) {
-    $transactions = $transactions.filter(t => t.id !== id);
-    updateMetrics($transactions);
-    showNotification('Purchase deleted successfully!', 'success');
   }
 
   // Reactive filtered transactions

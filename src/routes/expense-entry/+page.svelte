@@ -3,6 +3,15 @@
   import { writable } from 'svelte/store';
   import { Plus, Download, TrendingUp, DollarSign, ShoppingBag, Activity, Search, Filter, Calendar, Eye, Trash2, X, Check, AlertCircle } from 'lucide-svelte';
 
+  // API Configuration - Update this when connecting to a real backend
+  const BASE_URL = 'http://localhost:3000/api'; // Replace with your backend URL, e.g., 'https://your-backend.com/api'
+
+  // Optional: Add authentication headers if required
+  const getAuthHeaders = () => ({
+    // 'Authorization': 'Bearer YOUR_TOKEN_HERE', // Uncomment and replace with actual token if needed
+    'Content-Type': 'application/json'
+  });
+
   // Stores for state management
   const expenses = writable([]);
   const notifications = writable([]);
@@ -40,33 +49,104 @@
     'This Month': 30,
   };
 
-  // Mock API functions
+  // API functions with static data and backend integration comments
+  /**
+   * Fetches expenses for a given period
+   * Backend Endpoint: GET /api/expenses
+   * Query Parameters:
+   *   - period (string): 'Today', 'This Week', or 'This Month'
+   * Expected Response (JSON):
+   *   - Status: 200 OK
+   *   - Body: Array of expense objects
+   *   - Example:
+   *     [
+   *       {
+   *         "id": "uuid-string",
+   *         "recipient": "VendorSync Ltd",
+   *         "category": "Operational",
+   *         "amount": "1250.50",
+   *         "description": "Expense for Operational costs",
+   *         "date": "2025-07-28",
+   *         "status": "Paid"
+   *       },
+   *       ...
+   *     ]
+   * Error Handling:
+   *   - 400 Bad Request: Invalid period parameter
+   *   - 500 Internal Server Error: Server-side issue
+   * Backend Notes:
+   *   - Filter expenses based on the 'period' query parameter
+   *   - Return an empty array [] if no expenses are found
+   *   - Ensure amount is a string with two decimal places for client-side display
+   *   - Generate unique id (e.g., UUID) for each expense
+   */
   async function fetchExpenses(period = 'Today') {
     $isLoading = true;
-    const count = Math.floor(Math.random() * 10) + 5;
-    const multiplier = periodMultiplier[period];
-    const categories = ['Operational', 'Utilities', 'Supplies', 'Travel', 'Miscellaneous'];
-    const recipients = ['VendorSync Ltd', 'Utility Co', 'SupplyChain Inc', 'Travel Agency', 'Miscellaneous Payee'];
+    try {
+      // Static data for now
+      await new Promise(r => setTimeout(r, 800));
+      const count = Math.floor(Math.random() * 10) + 5;
+      const multiplier = periodMultiplier[period];
+      const categories = ['Operational', 'Utilities', 'Supplies', 'Travel', 'Miscellaneous'];
+      const recipients = ['VendorSync Ltd', 'Utility Co', 'SupplyChain Inc', 'Travel Agency', 'Miscellaneous Payee'];
 
-    const mock = Array.from({ length: count }, () => ({
-      id: crypto.randomUUID(),
-      recipient: recipients[Math.floor(Math.random() * recipients.length)],
-      category: categories[Math.floor(Math.random() * categories.length)],
-      amount: (Math.random() * 5000 + 100).toFixed(2),
-      description: `Expense for ${categories[Math.floor(Math.random() * categories.length)]}`,
-      date: new Date(Date.now() - Math.floor(Math.random() * multiplier) * 86400000).toISOString().split('T')[0],
-      status: Math.random() > 0.2 ? 'Paid' : Math.random() > 0.5 ? 'Pending' : 'Processing',
-    }));
+      const mock = [];
+      Array.from({ length: count }).forEach(() => {
+        mock.push({
+          id: crypto.randomUUID(),
+          recipient: recipients[Math.floor(Math.random() * recipients.length)],
+          category: categories[Math.floor(Math.random() * categories.length)],
+          amount: (Math.random() * 5000 + 100).toFixed(2),
+          description: `Expense for ${categories[Math.floor(Math.random() * categories.length)]}`,
+          date: new Date(Date.now() - Math.floor(Math.random() * multiplier) * 86400000).toISOString().split('T')[0],
+          status: Math.random() > 0.2 ? 'Paid' : Math.random() > 0.5 ? 'Pending' : 'Processing',
+        });
+      });
 
-    await new Promise(r => setTimeout(r, 800));
-    $expenses = mock;
-    updateMetrics(mock);
-    $isLoading = false;
+      // For backend integration, uncomment the following and comment out static data:
+      /*
+      const response = await fetch(`${BASE_URL}/expenses?period=${period}`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const mock = await response.json();
+      */
+
+      if (!Array.isArray(mock)) {
+        throw new Error('Invalid expense data');
+      }
+
+      $expenses = mock;
+      updateMetrics(mock);
+    } catch (error) {
+      showNotification(`Failed to fetch expenses: ${error.message}`, 'error');
+    } finally {
+      $isLoading = false;
+    }
   }
 
+  /**
+   * Updates metrics based on expense data
+   * Client-side function, no backend endpoint required
+   * Notes:
+   *   - Calculates totalExpenses, avgExpense, count, and budgetUtilization from expense data
+   *   - Filters for paid expenses only to ensure accuracy
+   *   - Updates metrics store with formatted values
+   */
   function updateMetrics(data) {
-    const paid = data.filter(t => t.status === 'Paid');
-    const total = paid.reduce((a, b) => a + parseFloat(b.amount), 0);
+    const paid = [];
+    data.forEach(t => {
+      if (t.status === 'Paid') {
+        paid.push(t);
+      }
+    });
+    let total = 0;
+    paid.forEach(t => {
+      total += parseFloat(t.amount);
+    });
     $metrics = {
       totalExpenses: total.toFixed(2),
       avgExpense: paid.length > 0 ? (total / paid.length).toFixed(2) : '0.00',
@@ -75,27 +155,197 @@
     };
   }
 
+  /**
+   * Creates a new expense
+   * Backend Endpoint: POST /api/expenses
+   * Request Body (JSON):
+   *   - category (string): 'Operational', 'Utilities', 'Supplies', 'Travel', 'Miscellaneous'
+   *   - amount (string): Expense amount with two decimal places
+   *   - recipient (string): Recipient of the expense
+   *   - description (string): Optional description
+   *   - date (string): ISO date string (e.g., '2025-07-28')
+   *   - budget (number): Budget for utilization calculation
+   *   - Example:
+   *     {
+   *       "category": "Operational",
+   *       "amount": "1000.00",
+   *       "recipient": "VendorSync Ltd",
+   *       "description": "Payment for operational costs",
+   *       "date": "2025-07-28",
+   *       "budget": 10000
+   *     }
+   * Expected Response (JSON):
+   *   - Status: 201 Created
+   *   - Body: Created expense object
+   *   - Example:
+   *     {
+   *       "id": "uuid-string",
+   *       "category": "Operational",
+   *       "amount": "1000.00",
+   *       "recipient": "VendorSync Ltd",
+   *       "description": "Payment for operational costs",
+   *       "date": "2025-07-28",
+   *       "status": "Paid",
+   *       "budget": 10000
+   *     }
+   * Error Handling:
+   *   - 400 Bad Request: Missing or invalid fields
+   *   - 500 Internal Server Error: Server-side issue
+   * Backend Notes:
+   *   - Validate required fields (category, amount, recipient, date, budget)
+   *   - Ensure amount is a string with two decimal places
+   *   - Generate unique id (e.g., UUID)
+   *   - Return the full expense object
+   */
   async function createExpense() {
     isSubmitting = true;
-    await new Promise(r => setTimeout(r, 1500));
-    const expense = {
-      ...form,
-      id: crypto.randomUUID(),
-      status: 'Paid',
-    };
-    $expenses = [expense, ...$expenses];
-    updateMetrics($expenses);
-    showNotification('Expense added successfully!', 'success');
-    form = {
-      category: 'Operational',
-      amount: '',
-      recipient: '',
-      description: '',
-      date: new Date().toISOString().split('T')[0],
-      budget: form.budget,
-    };
-    isSubmitting = false;
-    showNewExpenseModal = false;
+    try {
+      // Static data for now
+      await new Promise(r => setTimeout(r, 1500));
+      const expense = {
+        ...form,
+        id: crypto.randomUUID(),
+        status: 'Paid',
+      };
+
+      // For backend integration, uncomment the following and comment out static data:
+      /*
+      const response = await fetch(`${BASE_URL}/expenses`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          category: form.category,
+          amount: parseFloat(form.amount).toFixed(2),
+          recipient: form.recipient,
+          description: form.description,
+          date: form.date,
+          budget: parseFloat(form.budget)
+        })
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const expense = await response.json();
+      */
+
+      $expenses = [expense, ...$expenses];
+      updateMetrics($expenses);
+      showNotification('Expense added successfully!', 'success');
+      form = {
+        category: 'Operational',
+        amount: '',
+        recipient: '',
+        description: '',
+        date: new Date().toISOString().split('T')[0],
+        budget: form.budget,
+      };
+      showNewExpenseModal = false;
+    } catch (error) {
+      showNotification(`Failed to create expense: ${error.message}`, 'error');
+    } finally {
+      isSubmitting = false;
+    }
+  }
+
+  /**
+   * Deletes an expense by ID
+   * Backend Endpoint: DELETE /api/expenses/:id
+   * URL Parameters:
+   *   - id (string): Expense ID
+   * Expected Response (JSON):
+   *   - Status: 200 OK
+   *   - Body: { success: true }
+   *   - Example:
+   *     {
+   *       "success": true
+   *     }
+   * Error Handling:
+   *   - 404 Not Found: Expense ID not found
+   *   - 500 Internal Server Error: Server-side issue
+   * Backend Notes:
+   *   - Verify the expense ID exists before deletion
+   *   - Return { success: true } on successful deletion
+   */
+  async function deleteExpense(id) {
+    try {
+      // Static data for now
+      await new Promise(r => setTimeout(r, 500));
+
+      // For backend integration, uncomment the following:
+      /*
+      const response = await fetch(`${BASE_URL}/expenses/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error('Failed to delete expense');
+      }
+      */
+
+      $expenses = $expenses.filter(t => t.id !== id);
+      updateMetrics($expenses);
+      showNotification('Expense deleted successfully!', 'success');
+    } catch (error) {
+      showNotification(`Failed to delete expense: ${error.message}`, 'error');
+    }
+  }
+
+  /**
+   * Exports expenses as CSV
+   * Client-side function, but can leverage GET /api/expenses/csv for data
+   * Backend Endpoint (optional): GET /api/expenses/csv
+   * Query Parameters:
+   *   - period (string): 'Today', 'This Week', or 'This Month'
+   *   - category (string): 'All', 'Operational', 'Utilities', 'Supplies', 'Travel', 'Miscellaneous'
+   *   - search (string): Search term for recipient or category
+   * Expected Response (optional server-side CSV):
+   *   - Status: 200 OK
+   *   - Content-Type: text/csv
+   *   - Body: CSV content with headers: Date,Recipient,Category,Amount,Status,Description
+   * Client-side Notes:
+   *   - Currently generates CSV from filteredExpenses
+   *   - Uses client-side filtering based on searchTerm and categoryFilter
+   * Backend Notes:
+   *   - Optionally implement server-side CSV generation to reduce client-side processing
+   *   - Ensure CSV headers match client-side expectations
+   *   - Apply same filtering logic (recipient, category) server-side if implemented
+   */
+  function exportCSV() {
+    try {
+      const headers = ['Date', 'Recipient', 'Category', 'Amount', 'Status', 'Description'];
+      const rows = [];
+      filteredExpenses.forEach(t => {
+        rows.push([t.date, t.recipient, t.category, t.amount, t.status, t.description]);
+      });
+
+      // For server-side CSV generation, uncomment the following and comment out client-side logic:
+      /*
+      const response = await fetch(`${BASE_URL}/expenses/csv?period=${currentPeriod}&category=${categoryFilter}&search=${encodeURIComponent(searchTerm)}`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const csv = await response.text();
+      */
+
+      const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+      const uri = encodeURI('data:text/csv;charset=utf-8,' + csv);
+      const link = document.createElement('a');
+      link.setAttribute('href', uri);
+      link.setAttribute('download', `expenses_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showNotification('CSV exported successfully!', 'success');
+    } catch (error) {
+      showNotification(`Failed to export CSV: ${error.message}`, 'error');
+    }
   }
 
   function showNotification(message, type = 'info') {
@@ -104,26 +354,6 @@
     setTimeout(() => {
       $notifications = $notifications.filter(note => note.id !== id);
     }, 5000);
-  }
-
-  function exportCSV() {
-    const headers = ['Date', 'Recipient', 'Category', 'Amount', 'Status', 'Description'];
-    const rows = filteredExpenses.map(t => [t.date, t.recipient, t.category, t.amount, t.status, t.description]);
-    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
-    const uri = encodeURI('data:text/csv;charset=utf-8,' + csv);
-    const link = document.createElement('a');
-    link.setAttribute('href', uri);
-    link.setAttribute('download', `expenses_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showNotification('CSV exported successfully!', 'success');
-  }
-
-  function deleteExpense(id) {
-    $expenses = $expenses.filter(t => t.id !== id);
-    updateMetrics($expenses);
-    showNotification('Expense deleted successfully!', 'success');
   }
 
   // Reactive filtered expenses
@@ -385,9 +615,7 @@
               on:click={() => showNewExpenseModal = false}
               class="p-2 hover:bg-gray-800/50 rounded-lg transition-colors"
             >
-              <X class="w-6 h-6 text-gray
-
--400" />
+              <X class="w-6 h-6 text-gray-400" />
             </button>
           </div>
           <div class="space-y-4">

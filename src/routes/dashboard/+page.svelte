@@ -1,13 +1,22 @@
 <script>
   import { onMount } from 'svelte';
   import { writable } from 'svelte/store';
-  
+
+  // API Configuration - Update this when connecting to a real backend
+  const BASE_URL = 'http://localhost:3000/api'; // Replace with your backend URL, e.g., 'https://your-backend.com/api'
+
+  // Optional: Add authentication headers if required
+  const getAuthHeaders = () => ({
+    // 'Authorization': 'Bearer YOUR_TOKEN_HERE', // Uncomment and replace with actual token if needed
+    'Content-Type': 'application/json'
+  });
+
   // Stores for different data states
   const statsStore = writable([]);
   const activityStore = writable([]);
   const loadingStore = writable(false);
   const errorStore = writable(null);
-  
+
   // UI State
   let mounted = false;
   let hoveredCard = null;
@@ -17,7 +26,7 @@
   let showTransactionModal = false;
   let showReportsModal = false;
   let showDetailsModal = false;
-  
+
   // Data state
   let stats = [];
   let todayActivity = [];
@@ -26,26 +35,55 @@
     retentionRate: '92%',
     satisfaction: '4.8'
   };
-  
-  // API simulation functions
+
+  // Utility function to escape CSV values
+  function escapeCSVValue(value) {
+    if (value == null) return '';
+    const str = value.toString();
+    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  }
+
+  // API simulation functions with static data and backend integration comments
   const api = {
+    /**
+     * Fetches stats for a given period
+     * Backend Endpoint: GET /api/stats
+     * Query Parameters: 
+     *   - period (string): 'today', 'week', or 'month'
+     * Expected Response (JSON):
+     *   - Status: 200 OK
+     *   - Body: Array of stat objects
+     *   - Example:
+     *     [
+     *       {
+     *         "label": "Total Sales",
+     *         "baseValue": 150000,
+     *         "change": "+12%",
+     *         "icon": "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1",
+     *         "trend": "up",
+     *         "color": "blue"
+     *       },
+     *       ...
+     *     ]
+     * Error Handling:
+     *   - 400 Bad Request: Invalid period parameter
+     *   - 500 Internal Server Error: Server-side issue
+     * Backend Notes:
+     *   - Filter stats based on the 'period' query parameter
+     *   - Return an empty array [] if no data is available
+     *   - Ensure baseValue is a number for client-side processing
+     */
     async fetchStats(period = 'week') {
       loadingStore.set(true);
       errorStore.set(null);
-      
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+
       try {
-        // Simulate different data based on period
-        const periodMultiplier = {
-          'today': 0.1,
-          'week': 1,
-          'month': 4.3
-        };
-        
-        const multiplier = periodMultiplier[period] || 1;
-        
+        // Static data for now
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
         const baseStats = [
           {
             label: "Total Sales",
@@ -78,82 +116,249 @@
             icon: "M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z",
             trend: "down",
             color: "red"
-          },
+          }
         ];
-        
-        const processedStats = baseStats.map(stat => ({
-          ...stat,
-          value: `Rs. ${Math.round(stat.baseValue * multiplier).toLocaleString()}`
-        }));
-        
+
+        // For backend integration, uncomment the following and comment out static data:
+        /*
+        const response = await fetch(`${BASE_URL}/stats?period=${period}`, {
+          method: 'GET',
+          headers: getAuthHeaders()
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const baseStats = await response.json();
+        */
+
+        if (!Array.isArray(baseStats) || !baseStats.length) {
+          throw new Error('No stats available');
+        }
+
+        const periodMultiplier = {
+          'today': 0.1,
+          'week': 1,
+          'month': 4.3
+        };
+
+        const multiplier = periodMultiplier[period] || 1;
+
+        // Process stats with forEach
+        const processedStats = [];
+        baseStats.forEach(stat => {
+          processedStats.push({
+            ...stat,
+            value: `Rs. ${Math.round(stat.baseValue * multiplier).toLocaleString()}`
+          });
+        });
+
         statsStore.set(processedStats);
         return processedStats;
       } catch (error) {
-        errorStore.set('Failed to fetch statistics');
+        errorStore.set(`Failed to fetch statistics: ${error.message}`);
         throw error;
       } finally {
         loadingStore.set(false);
       }
     },
-    
+
+    /**
+     * Fetches today's activity data
+     * Backend Endpoint: GET /api/activity/today
+     * Query Parameters: None
+     * Expected Response (JSON):
+     *   - Status: 200 OK
+     *   - Body: Array of activity objects
+     *   - Example:
+     *     [
+     *       {
+     *         "label": "Sales Today",
+     *         "value": "Rs. 12,500",
+     *         "icon": "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2",
+     *         "color": "blue"
+     *       },
+     *       ...
+     *     ]
+     * Error Handling:
+     *   - 500 Internal Server Error: Server-side issue
+     * Backend Notes:
+     *   - Return metrics for the current day
+     *   - Format 'value' as a string (e.g., "Rs. 12,500" or "24")
+     *   - Return an empty array [] if no data is available
+     */
     async fetchTodayActivity() {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      return [
-        { label: 'Sales Today', value: 'Rs. 12,500', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2', color: 'blue' },
-        { label: 'New Orders', value: '24', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2', color: 'emerald' },
-        { label: 'Active Users', value: '1,284', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197', color: 'purple' },
-        { label: 'Conversions', value: '18.2%', icon: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6', color: 'emerald' }
-      ];
-    },
-    
-    async generateReport(type = 'csv') {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const headers = ["Label", "Value", "Change", "Trend", "Period"];
-      const rows = stats.map(s => [s.label, s.value, s.change, s.trend, selectedPeriod]);
-      
-      if (type === 'csv') {
-        const csvContent = "data:text/csv;charset=utf-8,"
-          + headers.join(",") + "\n"
-          + rows.map(e => e.join(",")).join("\n");
-        
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `dashboard_report_${selectedPeriod}_${new Date().toISOString().split('T')[0]}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+      try {
+        // Static data for now
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        const activity = [
+          { label: 'Sales Today', value: 'Rs. 12,500', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2', color: 'blue' },
+          { label: 'New Orders', value: '24', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2', color: 'emerald' },
+          { label: 'Active Users', value: '1,284', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197', color: 'purple' },
+          { label: 'Conversions', value: '18.2%', icon: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6', color: 'emerald' }
+        ];
+
+        // For backend integration, uncomment the following and comment out static data:
+        /*
+        const response = await fetch(`${BASE_URL}/activity/today`, {
+          method: 'GET',
+          headers: getAuthHeaders()
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const activity = await response.json();
+        */
+
+        if (!Array.isArray(activity)) {
+          throw new Error('Invalid activity data');
+        }
+
+        return activity;
+      } catch (error) {
+        errorStore.set(`Failed to fetch activity: ${error.message}`);
+        throw error;
       }
-      
-      return { success: true, type, recordCount: rows.length };
     },
-    
+
+    /**
+     * Generates a CSV report based on current stats
+     * Backend Endpoint: GET /api/stats (reuses stats endpoint)
+     * Query Parameters: 
+     *   - period (string): 'today', 'week', or 'month'
+     * Expected Response (JSON): Same as fetchStats
+     * Client-side: Generates CSV from fetched stats
+     * Error Handling:
+     *   - 400 Bad Request: Invalid period parameter
+     *   - 500 Internal Server Error: Server-side issue
+     * Backend Notes:
+     *   - Optionally, implement a dedicated endpoint (e.g., GET /api/reports/csv) to generate CSV server-side
+     *   - Ensure stats data is consistent with fetchStats response
+     */
+    async generateReport(type = 'csv') {
+      try {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        if (!stats.length) {
+          // Fetch stats if not already loaded
+          await api.fetchStats(selectedPeriod);
+        }
+
+        if (!stats.length) {
+          throw new Error('No data available for report');
+        }
+
+        const headers = ["Label", "Value", "Change", "Trend", "Period"];
+        const rows = [];
+        // Build rows for CSV
+        stats.forEach(s => {
+          rows.push([s.label, s.value, s.change, s.trend, selectedPeriod]);
+        });
+
+        if (type === 'csv') {
+          // Build CSV lines with escaped values
+          const csvLines = [];
+          csvLines.push(headers.map(escapeCSVValue).join(","));
+          rows.forEach(row => {
+            csvLines.push(row.map(escapeCSVValue).join(","));
+          });
+          const csvContent = "data:text/csv;charset=utf-8," + csvLines.join("\n");
+
+          const encodedUri = encodeURI(csvContent);
+          const link = document.createElement("a");
+          link.setAttribute("href", encodedUri);
+          link.setAttribute("download", `dashboard_report_${selectedPeriod}_${new Date().toISOString().split('T')[0]}.csv`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
+
+        return { success: true, type, recordCount: rows.length };
+      } catch (error) {
+        errorStore.set(`Failed to generate report: ${error.message}`);
+        throw error;
+      }
+    },
+
+    /**
+     * Creates a new transaction
+     * Backend Endpoint: POST /api/transactions
+     * Request Body (JSON):
+     *   - type (string): 'income' or 'expense'
+     *   - amount (number): Transaction amount
+     *   - description (string): Optional description
+     *   - category (string): e.g., 'sales', 'marketing', 'operations', 'other'
+     *   - Example:
+     *     {
+     *       "type": "income",
+     *       "amount": 1000,
+     *       "description": "Sale of product",
+     *       "category": "sales"
+     *     }
+     * Expected Response (JSON):
+     *   - Status: 201 Created
+     *   - Body: Created transaction object
+     *   - Example:
+     *     {
+     *       "id": "abc123",
+     *       "type": "income",
+     *       "amount": 1000,
+     *       "description": "Sale of product",
+     *       "category": "sales",
+     *       "status": "success",
+     *       "timestamp": "2025-07-28T22:49:00Z"
+     *     }
+     * Error Handling:
+     *   - 400 Bad Request: Missing or invalid fields
+     *   - 500 Internal Server Error: Server-side issue
+     * Backend Notes:
+     *   - Validate required fields (type, amount, category)
+     *   - Generate unique id and timestamp on the server
+     *   - Return the full transaction object
+     */
     async createTransaction(transactionData) {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Simulate API response
-      return {
-        id: Math.random().toString(36).substr(2, 9),
-        ...transactionData,
-        status: 'success',
-        timestamp: new Date().toISOString()
-      };
+      try {
+        // Static data for now
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        const transaction = {
+          id: Math.random().toString(36).substr(2, 9),
+          ...transactionData,
+          status: 'success',
+          timestamp: new Date().toISOString()
+        };
+
+        // For backend integration, uncomment the following and comment out static data:
+        /*
+        const response = await fetch(`${BASE_URL}/transactions`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify(transactionData)
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const transaction = await response.json();
+        */
+
+        return transaction;
+      } catch (error) {
+        errorStore.set(`Failed to create transaction: ${error.message}`);
+        throw error;
+      }
     }
   };
-  
+
   // Event handlers
   async function handlePeriodChange(period) {
     selectedPeriod = period;
     stats = await api.fetchStats(period);
   }
-  
+
   async function handleDownloadReport() {
     isGeneratingReport = true;
     try {
       await api.generateReport('csv');
-      // Show success notification
       showNotification('Report downloaded successfully!', 'success');
     } catch (error) {
       showNotification('Failed to generate report', 'error');
@@ -161,26 +366,26 @@
       isGeneratingReport = false;
     }
   }
-  
+
   function handleNewTransaction() {
     showTransactionModal = true;
   }
-  
+
   function handleViewReports() {
     showReportsModal = true;
   }
-  
+
   function handleViewDetails() {
     showDetailsModal = true;
   }
-  
+
   async function submitTransaction(formData) {
     try {
       loadingStore.set(true);
       const result = await api.createTransaction(formData);
       showNotification('Transaction created successfully!', 'success');
       showTransactionModal = false;
-      
+
       // Refresh data
       stats = await api.fetchStats(selectedPeriod);
       todayActivity = await api.fetchTodayActivity();
@@ -190,28 +395,28 @@
       loadingStore.set(false);
     }
   }
-  
+
   // Notification system
   let notifications = [];
-  
+
   function showNotification(message, type = 'info') {
     const id = Math.random().toString(36).substr(2, 9);
     notifications = [...notifications, { id, message, type }];
-    
+
     setTimeout(() => {
       notifications = notifications.filter(n => n.id !== id);
     }, 5000);
   }
-  
+
   // Initialize data
   onMount(async () => {
     mounted = true;
-    
+
     // Update time every second
     const timeInterval = setInterval(() => {
       currentTime = new Date().toLocaleTimeString();
     }, 1000);
-    
+
     // Load initial data
     try {
       [stats, todayActivity] = await Promise.all([
@@ -221,7 +426,7 @@
     } catch (error) {
       showNotification('Failed to load dashboard data', 'error');
     }
-    
+
     return () => clearInterval(timeInterval);
   });
 
@@ -624,7 +829,7 @@
           const formData = new FormData(e.target);
           const data = {
             type: formData.get('type'),
-            amount: formData.get('amount'),
+            amount: parseFloat(formData.get('amount')),
             description: formData.get('description'),
             category: formData.get('category')
           };
@@ -823,7 +1028,6 @@
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   }
 
-  /* Custom scrollbar */
   :global(::-webkit-scrollbar) {
     width: 8px;
   }

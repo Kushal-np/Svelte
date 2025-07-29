@@ -3,6 +3,15 @@
   import { writable } from 'svelte/store';
   import { Plus, Download, TrendingUp, DollarSign, Users, Activity, Search, Filter, Calendar, Eye, Trash2, X, Check, AlertCircle } from 'lucide-svelte';
 
+  // API Configuration - Update this when connecting to a real backend
+  const BASE_URL = 'http://localhost:3000/api'; // Replace with your backend URL, e.g., 'https://your-backend.com/api'
+
+  // Optional: Add authentication headers if required
+  const getAuthHeaders = () => ({
+    // 'Authorization': `Bearer ${localStorage.getItem('token') || 'YOUR_TOKEN_HERE'}`, // Uncomment and replace with actual token if needed
+    'Content-Type': 'application/json'
+  });
+
   // Stores for state management
   const transactions = writable([]);
   const notifications = writable([]);
@@ -40,62 +49,338 @@
     'This Month': 30
   };
 
-  // Mock API functions
+  /**
+   * Fetches transactions for a given period
+   * Backend Endpoint: GET /api/transactions
+   * Query Parameters:
+   *   - period (string): 'Today', 'This Week', or 'This Month'
+   * Expected Response (JSON):
+   *   - Status: 200 OK
+   *   - Body: Array of transaction objects
+   *   - Example:
+   *     [
+   *       {
+   *         "id": "uuid-string",
+   *         "customer": "Acme Corp",
+   *         "product": "Product A",
+   *         "amount": "750.50",
+   *         "description": "Transaction for Product A",
+   *         "date": "2025-07-28",
+   *         "status": "Completed",
+   *         "type": "Sale"
+   *       },
+   *       ...
+   *     ]
+   * Error Handling:
+   *   - 400 Bad Request: Invalid period parameter
+   *   - 401 Unauthorized: Missing or invalid authentication token
+   *   - 500 Internal Server Error: Server-side issue
+   * Backend Notes:
+   *   - Filter transactions based on the 'period' query parameter
+   *   - Return an empty array [] if no transactions are found
+   *   - Ensure amount is a string with two decimal places for client-side display
+   *   - Generate unique id (e.g., UUID) for each transaction
+   *   - Implement rate limiting to prevent abuse
+   *   - Validate authentication token if required
+   */
   async function fetchTransactions(period = 'Today') {
     $isLoading = true;
-    const count = Math.floor(Math.random() * 10) + 5;
-    const multiplier = periodMultiplier[period];
-    const products = ['Product A', 'Service B', 'Consulting', 'Software License', 'Hardware'];
-    const customers = ['Acme Corp', 'TechStart Inc', 'Global Solutions', 'Innovation Labs', 'Future Systems'];
+    try {
+      // Static data for now
+      await new Promise(r => setTimeout(r, 800));
+      const count = Math.floor(Math.random() * 10) + 5;
+      const multiplier = periodMultiplier[period];
+      const products = ['Product A', 'Service B', 'Consulting', 'Software License', 'Hardware'];
+      const customers = ['Acme Corp', 'TechStart Inc', 'Global Solutions', 'Innovation Labs', 'Future Systems'];
 
-    const mock = Array.from({ length: count }, () => ({
-      id: crypto.randomUUID(),
-      customer: customers[Math.floor(Math.random() * customers.length)],
-      product: products[Math.floor(Math.random() * products.length)],
-      amount: (Math.random() * 15000 + 500).toFixed(2),
-      description: `Transaction for ${products[Math.floor(Math.random() * products.length)]}`,
-      date: new Date(Date.now() - Math.floor(Math.random() * multiplier) * 86400000).toISOString().split('T')[0],
-      status: Math.random() > 0.2 ? 'Completed' : Math.random() > 0.5 ? 'Pending' : 'Processing'
-    }));
+      const mock = [];
+      Array.from({ length: count }).forEach(() => {
+        mock.push({
+          id: crypto.randomUUID(),
+          customer: customers[Math.floor(Math.random() * customers.length)],
+          product: products[Math.floor(Math.random() * products.length)],
+          amount: (Math.random() * 15000 + 500).toFixed(2),
+          description: `Transaction for ${products[Math.floor(Math.random() * products.length)]}`,
+          date: new Date(Date.now() - Math.floor(Math.random() * multiplier) * 86400000).toISOString().split('T')[0],
+          status: Math.random() > 0.2 ? 'Completed' : Math.random() > 0.5 ? 'Pending' : 'Processing',
+          type: form.type
+        });
+      });
 
-    await new Promise(r => setTimeout(r, 800));
-    $transactions = mock;
-    updateMetrics(mock);
-    $isLoading = false;
+      // For backend integration, uncomment the following and comment out static data:
+      /*
+      const response = await fetch(`${BASE_URL}/transactions?period=${encodeURIComponent(period)}`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const mock = await response.json();
+      */
+
+      if (!Array.isArray(mock)) {
+        throw new Error('Invalid transaction data format');
+      }
+
+      $transactions = mock;
+      updateMetrics(mock);
+    } catch (error) {
+      showNotification(`Failed to fetch transactions: ${error.message}`, 'error');
+    } finally {
+      $isLoading = false;
+    }
   }
 
+  /**
+   * Updates metrics based on transaction data
+   * Client-side function, no backend endpoint required
+   * Notes:
+   *   - Calculates totalSales, avgSale, count, and successRate from transaction data
+   *   - Filters for completed transactions only to ensure accurate financial metrics
+   *   - Updates metrics store with formatted values
+   */
   function updateMetrics(data) {
-    const completed = data.filter(t => t.status === 'Completed');
-    const total = completed.reduce((a, b) => a + parseFloat(b.amount), 0);
+    const completed = [];
+    data.forEach(t => {
+      if (t.status === 'Completed') {
+        completed.push(t);
+      }
+    });
+    let total = 0;
+    completed.forEach(t => {
+      total += parseFloat(t.amount);
+    });
     $metrics = {
       totalSales: total.toFixed(2),
       avgSale: completed.length > 0 ? (total / completed.length).toFixed(2) : '0.00',
       count: data.length,
-      successRate: `${Math.round((completed.length / data.length) * 100)}%`
+      successRate: data.length > 0 ? `${Math.round((completed.length / data.length) * 100)}%` : '0%'
     };
   }
 
+  /**
+   * Creates a new transaction
+   * Backend Endpoint: POST /api/transactions
+   * Request Body (JSON):
+   *   - type (string): 'Sale', 'Refund', 'Service'
+   *   - amount (string): Transaction amount with two decimal places
+   *   - customer (string): Customer of the transaction
+   *   - product (string): 'Product A', 'Service B', 'Consulting', 'Software License', 'Hardware'
+   *   - description (string): Optional description
+   *   - date (string): ISO date string (e.g., '2025-07-28')
+   *   - Example:
+   *     {
+   *       "type": "Sale",
+   *       "amount": "750.50",
+   *       "customer": "Acme Corp",
+   *       "product": "Product A",
+   *       "description": "Transaction for Product A",
+   *       "date": "2025-07-28"
+   *     }
+   * Expected Response (JSON):
+   *   - Status: 201 Created
+   *   - Body: Created transaction object
+   *   - Example:
+   *     {
+   *       "id": "uuid-string",
+   *       "type": "Sale",
+   *       "amount": "750.50",
+   *       "customer": "Acme Corp",
+   *       "product": "Product A",
+   *       "description": "Transaction for Product A",
+   *       "date": "2025-07-28",
+   *       "status": "Completed"
+   *     }
+   * Error Handling:
+   *   - 400 Bad Request: Missing or invalid fields
+   *   - 401 Unauthorized: Missing or invalid authentication token
+   *   - 500 Internal Server Error: Server-side issue
+   * Backend Notes:
+   *   - Validate required fields (type, amount, customer, product, date)
+   *   - Ensure amount is a string with two decimal places
+   *   - Generate unique id (e.g., UUID)
+   *   - Return the full transaction object
+   *   - Implement rate limiting to prevent abuse
+   *   - Validate authentication token if required
+   */
   async function createTransaction() {
+    // Client-side validation
+    if (!form.customer) {
+      showNotification('Customer is required', 'error');
+      return;
+    }
+    if (!form.amount || parseFloat(form.amount) <= 0) {
+      showNotification('Amount must be greater than 0', 'error');
+      return;
+    }
+    if (!form.date) {
+      showNotification('Date is required', 'error');
+      return;
+    }
+
     isSubmitting = true;
-    await new Promise(r => setTimeout(r, 1500));
-    const transaction = {
-      ...form,
-      id: crypto.randomUUID(),
-      status: 'Completed'
-    };
-    $transactions = [transaction, ...$transactions];
-    updateMetrics($transactions);
-    showNotification('Transaction saved successfully!', 'success');
-    form = {
-      type: 'Sale',
-      amount: '',
-      customer: '',
-      product: 'Product A',
-      description: '',
-      date: new Date().toISOString().split('T')[0]
-    };
-    isSubmitting = false;
-    showNewSaleModal = false;
+    try {
+      // Static data for now
+      await new Promise(r => setTimeout(r, 1500));
+      const transaction = {
+        ...form,
+        id: crypto.randomUUID(),
+        status: 'Completed',
+        amount: parseFloat(form.amount).toFixed(2) // Ensure two decimal places
+      };
+
+      // For backend integration, uncomment the following and comment out static data:
+      /*
+      const response = await fetch(`${BASE_URL}/transactions`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          type: form.type,
+          amount: parseFloat(form.amount).toFixed(2),
+          customer: form.customer,
+          product: form.product,
+          description: form.description,
+          date: form.date
+        })
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const transaction = await response.json();
+      */
+
+      $transactions = [transaction, ...$transactions];
+      updateMetrics($transactions);
+      showNotification('Transaction saved successfully!', 'success');
+      form = {
+        type: 'Sale',
+        amount: '',
+        customer: '',
+        product: 'Product A',
+        description: '',
+        date: new Date().toISOString().split('T')[0]
+      };
+      showNewSaleModal = false;
+    } catch (error) {
+      showNotification(`Failed to create transaction: ${error.message}`, 'error');
+    } finally {
+      isSubmitting = false;
+    }
+  }
+
+  /**
+   * Deletes a transaction by ID
+   * Backend Endpoint: DELETE /api/transactions/:id
+   * URL Parameters:
+   *   - id (string): Transaction ID
+   * Expected Response (JSON):
+   *   - Status: 200 OK
+   *   - Body: { success: true }
+   *   - Example:
+   *     {
+   *       "success": true
+   *     }
+   * Error Handling:
+   *   - 404 Not Found: Transaction ID not found
+   *   - 401 Unauthorized: Missing or invalid authentication token
+   *   - 500 Internal Server Error: Server-side issue
+   * Backend Notes:
+   *   - Verify the transaction ID exists before deletion
+   *   - Return { success: true } on successful deletion
+   *   - Implement rate limiting to prevent abuse
+   *   - Validate authentication token if required
+   */
+  async function deleteTransaction(id) {
+    try {
+      // Static data for now
+      await new Promise(r => setTimeout(r, 500));
+
+      // For backend integration, uncomment the following:
+      /*
+      const response = await fetch(`${BASE_URL}/transactions/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error('Failed to delete transaction');
+      }
+      */
+
+      $transactions = $transactions.filter(t => t.id !== id);
+      updateMetrics($transactions);
+      showNotification('Transaction deleted successfully!', 'success');
+    } catch (error) {
+      showNotification(`Failed to delete transaction: ${error.message}`, 'error');
+    }
+  }
+
+  /**
+   * Exports transactions as CSV
+   * Client-side function, but can leverage GET /api/transactions/csv for data
+   * Backend Endpoint (optional): GET /api/transactions/csv
+   * Query Parameters:
+   *   - period (string): 'Today', 'This Week', or 'This Month'
+   *   - status (string): 'All', 'Completed', 'Pending', 'Processing'
+   *   - search (string): Search term for customer or product
+   * Expected Response (optional server-side CSV):
+   *   - Status: 200 OK
+   *   - Content-Type: text/csv
+   *   - Body: CSV content with headers: Date,Customer,Product,Amount,Status,Description
+   * Client-side Notes:
+   *   - Generates CSV from filteredTransactions using client-side filtering
+   *   - Escapes commas in fields to prevent CSV formatting issues
+   * Backend Notes:
+   *   - Optionally implement server-side CSV generation to reduce client-side processing
+   *   - Ensure CSV headers match client-side expectations
+   *   - Apply same filtering logic (customer, product, status) server-side if implemented
+   *   - Implement rate limiting to prevent abuse
+   */
+  function exportCSV() {
+    try {
+      const headers = ['Date', 'Customer', 'Product', 'Amount', 'Status', 'Description'];
+      const rows = [];
+      filteredTransactions.forEach(t => {
+        // Escape commas in fields to prevent CSV formatting issues
+        const escapedRow = [
+          t.date,
+          `"${t.customer.replace(/"/g, '""')}"`,
+          t.product,
+          t.amount,
+          t.status,
+          `"${t.description.replace(/"/g, '""')}"`
+        ];
+        rows.push(escapedRow);
+      });
+
+      // For server-side CSV generation, uncomment the following and comment out client-side logic:
+      /*
+      const response = await fetch(`${BASE_URL}/transactions/csv?period=${encodeURIComponent(currentPeriod)}&status=${encodeURIComponent(statusFilter)}&search=${encodeURIComponent(searchTerm)}`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const csv = await response.text();
+      */
+
+      const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+      const uri = encodeURI('data:text/csv;charset=utf-8,' + csv);
+      const link = document.createElement('a');
+      link.setAttribute('href', uri);
+      link.setAttribute('download', `transactions_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showNotification('CSV exported successfully!', 'success');
+    } catch (error) {
+      showNotification(`Failed to export CSV: ${error.message}`, 'error');
+    }
   }
 
   function showNotification(message, type = 'info') {
@@ -104,26 +389,6 @@
     setTimeout(() => {
       $notifications = $notifications.filter(note => note.id !== id);
     }, 5000);
-  }
-
-  function exportCSV() {
-    const headers = ['Date', 'Customer', 'Product', 'Amount', 'Status', 'Description'];
-    const rows = filteredTransactions.map(t => [t.date, t.customer, t.product, t.amount, t.status, t.description]);
-    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
-    const uri = encodeURI('data:text/csv;charset=utf-8,' + csv);
-    const link = document.createElement('a');
-    link.setAttribute('href', uri);
-    link.setAttribute('download', `transactions_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showNotification('CSV exported successfully!', 'success');
-  }
-
-  function deleteTransaction(id) {
-    $transactions = $transactions.filter(t => t.id !== id);
-    updateMetrics($transactions);
-    showNotification('Transaction deleted successfully!', 'success');
   }
 
   // Reactive filtered transactions
