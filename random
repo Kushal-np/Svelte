@@ -1,0 +1,16 @@
+pre order section on dashboard - it shows how many preorder are left to order wholesellers {below the box} and also setreminder kinda , button- assign to wholesale route bit .notification paused for today or for tomorrow 
+removing the order card because it is unnecessary
+
+
+- in delivery page , if someone already paid and their item has already come but that customer hasn't recieved separate room thingy for delivery , 
+
+- the data from the delivery page can be used to update the status  , if already delivered - completed otherwise, in delivery room 
+
+- adding a seciton for loss for damaged product something , count update , 
+
+product section - price and stock  based on color or size /
+
+- inventory page - we can edit the number of products
+
+
+-the new sales entry has to have option of selecting different unit categories
